@@ -1,0 +1,32 @@
+---
+suite: container tls secretName
+release:
+  name: test
+values:
+  - values-test.yaml
+tests:
+  - it: should set container tls secretName as default value
+    templates:
+      - deployment.yaml
+    set:
+      app.tls.autogenerate: true
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            secret:
+              secretName: test-passbolt-sec-tls-internal
+          any: true
+  - it: should set container tls secretName as given value
+    templates:
+      - deployment.yaml
+    set:
+      app.tls.autogenerate: false
+      app.tls.existingSecret: supersecretname
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            secret:
+              secretName: supersecretname
+          any: true

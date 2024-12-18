@@ -61,7 +61,7 @@ tests:
       - contains:
           path: spec.jobTemplate.spec.template.spec.volumes
           content:
-            name: test-passbolt-vol-success
+            name: vol-success
           count: 1
           any: true
 
@@ -79,6 +79,29 @@ tests:
       - contains:
           path: spec.jobTemplate.spec.template.spec.volumes
           content:
-            name: test-passbolt-sec-gpg
+            name: sec-gpg
+            secret:
+              secretName: test-passbolt-sec-gpg
+          count: 1
+          any: true
+
+  - it: should use the existing gpg secret if supplied
+    templates:
+      - cronjob-proc-email.yaml
+    set:
+      redis.auth.enabled: true
+      redis.replica.replicaCount: 2
+      autoscaling.enabled: false
+      cleanOrgs: true
+      migrateOldDbs: true
+      enableEmailCron: true
+      gpgExistingSecret: "my-gpg-secret"
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content:
+            name: sec-gpg
+            secret:
+              secretName: my-gpg-secret
           count: 1
           any: true

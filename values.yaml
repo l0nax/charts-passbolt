@@ -7,6 +7,24 @@
 
 # -- Install redis as a depending chart
 redisDependencyEnabled: true
+# -- Install mariadb as a depending chart
+mariadbDependencyEnabled: true
+# -- Install postgresql as a depending chart
+postgresqlDependencyEnabled: false
+
+# Configure postgresql as a dependency chart
+#postgresql:
+#  auth:
+#    # -- Configure postgresql auth username
+#    username: CHANGEME
+#    # -- Configure postgresql auth password
+#    password: CHANGEME
+#    # -- Configure postgresql auth database
+#    database: passbolt
+
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
 
 # Configure redis dependency chart
 redis:
@@ -21,8 +39,6 @@ redis:
 
 ## MariaDB dependency parameters
 
-# -- Install mariadb as a depending chart
-mariadbDependencyEnabled: true
 # Configure mariadb as a dependency chart
 mariadb:
   # -- Configure mariadb architecture
@@ -87,22 +103,35 @@ mariadb:
 
 ## Passbolt container and sidecar parameters
 app:
-  initImage:
-    # -- Configure pasbolt deployment init container image client for database
-    client: mariadb
-    # -- Configure pasbolt deployment image repsitory
-    repository: mariadb
-    # -- Configure pasbolt deployment image pullPolicy
-    pullPolicy: IfNotPresent
-    # -- Overrides the image tag whose default is the chart appVersion.
-    tag: latest
+  # -- Configure pasbolt deployment init container that waits for database
+  databaseInitContainer:
+    # -- Toggle pasbolt deployment init container that waits for database
+    enabled: true
+  #initImage:
+  #  # -- Configure pasbolt deployment init container image client for database
+  #  client: mariadb
+  #  registry: ""
+  #  # -- Configure pasbolt deployment image repsitory
+  #  repository: mariadb
+  #  # -- Configure pasbolt deployment image pullPolicy
+  #  pullPolicy: IfNotPresent
+  #  # -- Overrides the image tag whose default is the chart appVersion.
+  #  tag: latest
   image:
     # -- Configure pasbolt deployment image repsitory
+    registry: ""
     repository: passbolt/passbolt
     # -- Configure pasbolt deployment image pullPolicy
     pullPolicy: IfNotPresent
     # -- Overrides the image tag whose default is the chart appVersion.
-    tag: 4.2.0-1-ce
+    tag: 4.9.1-1-ce
+  # Allowed options: mariadb, mysql or postgresql
+  database:
+    kind: mariadb
+    # -- Configure ssl on mariadb/mysql clients
+    # -- In case this is enabled, you will be responsible for creating and mounting the certificates and
+    # -- additional configutions on both the client and the server.
+    # ssl: off
   cache:
     # Use CACHE_CAKE_DEFAULT_* variables to configure the connection to redis instance
     # on the passboltEnv configuration section
@@ -116,6 +145,7 @@ app:
         enabled: true
         # -- Configure redis sentinel proxy image
         image:
+          registry: ""
           # -- Configure redis sentinel image repository
           repository: haproxy
           # -- Configure redis sentinel image tag
@@ -125,6 +155,14 @@ app:
         # -- Configure the passbolt deployment resources
   extraPodLabels: {}
   resources: {}
+  tls:
+    # -- If autogenerate is true, the chart will generate a secret with a certificate for APP_FULL_BASE_URL hostname
+    # -- if autogenerate is false, existingSecret should be filled with an existing tls kind secret name
+    # @ignored
+    autogenerate: true
+    #existingSecret: ""
+  # -- Configure additional containers to be added to the pod
+  extraContainers: []
 
 # -- Enable email cron
 cronJobEmail:
@@ -145,13 +183,21 @@ gpgPath: /etc/passbolt/gpg
 gpgServerKeyPrivate: ""
 # -- Gpg server public key in base64
 gpgServerKeyPublic: ""
+# -- Name of the existing secret for the GPG server keypair. The secret must contain the `serverkey.asc` and `serverkey_private.asc` keys.
+gpgExistingSecret: ""
 
+# -- Name of the existing secret for the JWT server keypair. The secret must contain the `jwt.key` and `jwt.pem` keys.
+jwtExistingSecret: ""
 # -- Configure passbolt jwt directory
 jwtPath: /etc/passbolt/jwt
 # -- JWT server private key in base64
-jwtServerPrivate:
+jwtServerPrivate: ""
 # -- JWT server public key in base64
-jwtServerPublic:
+jwtServerPublic: ""
+# -- Forces overwrite JWT keys
+jwtCreateKeysForced: false
+jobCreateJwtKeys:
+  extraPodLabels: {}
 
 jobCreateGpgKeys:
   extraPodLabels: {}
@@ -180,8 +226,12 @@ passboltEnv:
     PASSBOLT_PLUGINS_LICENSE_LICENSE: /etc/passbolt/subscription_key.txt
     # -- Configure passbolt default email from
     EMAIL_DEFAULT_FROM: no-reply@passbolt.local
+    # -- Configure passbolt default email from name
+    EMAIL_DEFAULT_FROM_NAME: Passbolt
     # -- Configure passbolt default email host
     EMAIL_TRANSPORT_DEFAULT_HOST: 127.0.0.1
+    # -- Configure passbolt default email timeout
+    EMAIL_TRANSPORT_DEFAULT_TIMEOUT: 30
     # -- Toggle passbolt tls
     EMAIL_TRANSPORT_DEFAULT_TLS: true
     # -- Configure passbolt jwt private key path
@@ -216,6 +266,12 @@ passboltEnv:
     []
     # - secretRef:
     #     name: passbolt-secret
+  ## Overrides the plain value in the case of not wanting to provide the config from values
+  ## Do this ONLY if you know what you are doing
+  configMapName: ''
+  ## Overrides the secrets value in the case of not wanting to provide them in the values file.
+  ## Do this ONLY if you know what you are doing
+  secretName: ''
 ## Passbolt deployment parameters
 
 # -- If autoscaling is disabled this will define the number of pods to run
@@ -298,14 +354,25 @@ podSecurityContext:
 service:
   # -- Configure passbolt service type
   type: ClusterIP
-  # -- Configure passbolt service port
-  port: 443
-  # -- Configure passbolt service targetPort
-  targetPort: 443
-  # -- Configure passbolt service port name
-  name: https
   # -- Annotations to add to the service
   annotations: {}
+  # -- Configure the service ports
+  ports:
+    # -- Configure the HTTPS port
+    https:
+      # -- Configure passbolt HTTPS service port
+      port: 443
+      # -- Configure passbolt HTTPS service targetPort
+      targetPort: 443
+      # -- Configure passbolt HTTPS service port name
+      name: https
+    http:
+      # -- Configure passbolt HTTP service port
+      port: 80
+      # -- Configure passbolt HTTP service targetPort
+      targetPort: 80
+      # -- Configure passbolt HTTP service port name
+      name: http
 
 ingress:
   # -- Enable passbolt ingress
@@ -318,11 +385,15 @@ ingress:
     - host: passbolt.local
       paths:
         - path: /
+          port: https
           pathType: ImplementationSpecific
   # -- Configure passbolt ingress tls
   tls:
+    # If autogenerate is true, the chart will generate a secret for the given hosts
+    # if autogenerate is false, existingSecret should be filled with an existing tls kind secret name
     # @ignored
-    - secretName: tls
+    - autogenerate: true
+      # existingSecret: ""
       hosts:
         - passbolt.local
 # -- Configure passbolt deployment nodeSelector
@@ -335,7 +406,7 @@ tolerations: []
 affinity: {}
 
 # -- Add additional volumes, e.g. for overwriting config files
-extraVolumes: ""
+extraVolumes: []
 
 # -- Add additional volume mounts, e.g. for overwriting config files
-extraVolumeMounts: ""
+extraVolumeMounts: []

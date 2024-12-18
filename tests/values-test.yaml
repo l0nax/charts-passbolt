@@ -101,7 +101,11 @@ gpgPath: /etc/passbolt/gpg
 gpgServerKeyPrivate: ""
 # -- Gpg server public key in base64
 gpgServerKeyPublic: ""
+# -- Name of the existing secret for the GPG server keypair. The secret must contain the `serverkey.asc` and `serverkey_private.asc` keys.
+gpgExistingSecret: ""
 
+# -- Name of the existing secret for the JWT server keypair. The secret must contain the `jwt.key` and `jwt.pem` keys.
+jwtExistingSecret: ""
 # -- Configure passbolt jwt directory
 jwtPath: /etc/passbolt/jwt
 # -- JWT server private key in base64
@@ -136,8 +140,12 @@ passboltEnv:
     PASSBOLT_PLUGINS_LICENSE_LICENSE: /etc/passbolt/subscription_key.txt
     # -- Configure passbolt default email from
     EMAIL_DEFAULT_FROM: no-reply@passbolt.local
+    # -- Configure passbolt default email from name
+    EMAIL_DEFAULT_FROM_NAME: Passbolt
     # -- Configure passbolt default email host
     EMAIL_TRANSPORT_DEFAULT_HOST: 127.0.0.1
+    # -- Configure passbolt default email timeout
+    EMAIL_TRANSPORT_DEFAULT_TIMEOUT: 30
     # -- Toggle passbolt tls
     EMAIL_TRANSPORT_DEFAULT_TLS: true
     # -- Configure passbolt jwt private key path
@@ -243,14 +251,25 @@ podSecurityContext: {}
 service:
   # -- Configure passbolt service type
   type: ClusterIP
-  # -- Configure passbolt service port
-  port: 443
-  # -- Configure passbolt service targetPort
-  targetPort: 443
-  # -- Configure passbolt service port name
-  name: https
   # -- Annotations to add to the service
   annotations: {}
+  # -- Configure the service ports
+  ports:
+    # -- Configure the HTTPS port
+    https:
+      # -- Configure passbolt HTTPS service port
+      port: 443
+      # -- Configure passbolt HTTPS service targetPort
+      targetPort: 443
+      # -- Configure passbolt HTTPS service port name
+      name: https
+    http:
+      # -- Configure passbolt HTTP service port
+      port: 80
+      # -- Configure passbolt HTTP service targetPort
+      targetPort: 80
+      # -- Configure passbolt HTTP service port name
+      name: http
 
 ingress:
   # -- Enable passbolt ingress
@@ -267,7 +286,7 @@ ingress:
   # -- Configure passbolt ingress tls
   tls:
     # @ignored
-  - secretName: tls
+  - secretName: ""
     hosts:
       - passbolt.local
 # -- Configure passbolt deployment nodeSelector
@@ -280,7 +299,7 @@ tolerations: []
 affinity: {}
 
 # -- Add additional volumes, e.g. for overwriting config files
-extraVolumes: ""
+extraVolumes: []
 
   # -- Add additional volume mounts, e.g. for overwriting config files
-extraVolumeMounts: ""
+extraVolumeMounts: []

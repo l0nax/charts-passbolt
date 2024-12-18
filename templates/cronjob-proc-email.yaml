@@ -23,14 +23,16 @@ spec:
              {{- toYaml . | nindent 12 }}
            {{- end }}
         spec:
+          {{- include "passbolt.pullSecrets" ( dict "images" (list .Values.imagePullSecrets ) "global" .Values.global) | nindent 10 }}
           serviceAccountName: {{ $Name }}-sa-common
           restartPolicy: OnFailure
           securityContext:
             runAsUser: 33
             fsGroup: 33
           containers:
-            - name: {{ $fullName }}
-          {{ include "passbolt-library.container-repositories.tpl" (dict "Values" . "Image" .Values.app.image) | nindent 14 }}
+            - name: proc-email
+              image: {{ include "passbolt.image" (dict "imageRoot" .Values.app.image "global" .Values.global) }}
+              imagePullPolicy: {{ .Values.app.image.pullPolicy }}
               command:
                 - "/bin/bash"
               args:
@@ -48,21 +50,22 @@ spec:
                 {{- end }}
               envFrom:
                 - configMapRef:
-                    name: {{ $Name }}-cm-env
+                    name: {{ default (printf "%s-cm-env" $Name) .Values.passboltEnv.configMapName }}
                 - secretRef:
-                    name: {{ $Name }}-sec-env
+                    name: {{ default (printf "%s-sec-env" $Name) .Values.passboltEnv.secretName }}
                 {{- with .Values.passboltEnv.extraEnvFrom }}
                 {{- toYaml . | nindent 16 }}
                 {{- end }}
               volumeMounts:
-                - name: {{ $Name }}-vol-success
+                - name: vol-success
                   mountPath: /tmp/pod
-                - name: {{ $Name }}-sec-gpg
+                - name: sec-gpg
                   mountPath: {{ .Values.gpgPath }}
                   readOnly: true
             {{- if .Values.app.cache.redis.sentinelProxy.enabled }}
-            - name: {{ $fullName }}-redisproxy
-              {{ include "passbolt-library.container-repositories.tpl" (dict "Values" . "Image" .Values.app.cache.redis.sentinelProxy.image) | nindent 14 }}
+            - name: redisproxy
+              image: {{ include "passbolt.image" (dict "imageRoot" .Values.app.cache.redis.sentinelProxy.image "global" .Values.global) }}
+              imagePullPolicy: {{ .Values.app.cache.redis.sentinelProxy.pullPolicy }}
               command:
                 - "/bin/bash"
               args:
@@ -72,26 +75,26 @@ spec:
                   REDIS_PROXY_PID=$?
                   while true; do if [ -f "/tmp/pod/success" ]; then kill $REDIS_PROXY_PID; sleep 5;  exit 0; fi; done
               volumeMounts:
-                - name: {{ $Name }}-vol-success
+                - name: vol-success
                   mountPath: /tmp/pod
                 - mountPath: "/usr/local/etc/haproxy/haproxy.cfg"
                   subPath: haproxy.cfg
-                  name: {{ $fullName }}-sec-redis-proxy
+                  name: sec-redis-proxy
                   readOnly: true
               resources:
                 {{- toYaml .Values.redisProxyResources | nindent 16 }}
             {{- end }}
+          {{- if .Values.app.extraContainers }}
+          {{- toYaml .Values.app.extraContainers | nindent 12 }}
+          {{- end }}
           volumes:
-            - name: {{ $Name }}-vol-success
+            - name: vol-success
               emptyDir: {}
-            - name: {{ $fullName }}-sec-gcs
+            - name: sec-gpg
               secret:
-                secretName: {{ $Name }}-sec-gcs
-            - name: {{ $Name }}-sec-gpg
-              secret:
-                secretName: {{ $Name }}-sec-gpg
+                secretName: {{ include "passbolt.gpg.secretName" ( dict "name" $Name "Values" $.Values ) }}
             {{- if .Values.app.cache.redis.sentinelProxy.enabled }}
-            - name: {{ $fullName }}-sec-redis-proxy
+            - name: sec-redis-proxy
               secret:
                 secretName: {{ $Name }}-sec-redis-proxy
             {{- end -}}

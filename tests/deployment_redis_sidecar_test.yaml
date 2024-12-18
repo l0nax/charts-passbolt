@@ -23,8 +23,9 @@ tests:
             volumeMounts:
               - mountPath: "/usr/local/etc/haproxy/haproxy.cfg"
                 subPath: haproxy.cfg
-                name: test-passbolt-depl-srv-sec-redis-proxy
+                name: sec-redis-proxy
                 readOnly: true
+          any: true
 
   - it: should have only one redis sidecar and mount its configuration
     templates:
@@ -44,7 +45,7 @@ tests:
             volumeMounts:
               - mountPath: "/usr/local/etc/haproxy/haproxy.cfg"
                 subPath: haproxy.cfg
-                name: test-passbolt-depl-srv-sec-redis-proxy
+                name: sec-redis-proxy
                 readOnly: true
           count: 1
           any: true
@@ -59,12 +60,12 @@ tests:
       app.cache.redis.enabled: false
       app.cache.redis.sentinelProxy.enabled: false
     asserts:
-      - contains:
+      - notContains:
           path: spec.template.spec.volumes
           content:
+            name: sec-redis-proxy
             secret:
               secretName: test-passbolt-sec-redis-proxy
-          count: 0
           any: true
 
   - it: should contain a volumes section
@@ -81,6 +82,7 @@ tests:
       - contains:
           path: spec.template.spec.volumes
           content:
+            name: sec-redis-proxy
             secret:
               secretName: test-passbolt-sec-redis-proxy
           count: 1
@@ -99,4 +101,3 @@ tests:
     asserts:
       - isNotEmpty:
           path: spec.template.metadata.annotations.checksum/sec-redis-proxy
-

@@ -1,4 +1,4 @@
-{{ if or ( not .Values.gpgServerKeyPublic ) ( not .Values.gpgServerKeyPrivate ) }}
+{{- if and ( not .Values.gpgExistingSecret ) ( or ( not .Values.gpgServerKeyPublic ) ( not .Values.gpgServerKeyPrivate ) ) }}
 {{- $type := "job" -}}
 {{- $action := "create-gpg-keys" -}}
 {{- $Name := include "passbolt-library.fullname" . -}}
@@ -22,11 +22,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      {{- include "passbolt.pullSecrets" ( dict "images" (list .Values.imagePullSecrets ) "global" .Values.global) | nindent 6 }}
       serviceAccountName: {{ $Name }}-sa-{{ $action }}
       restartPolicy: OnFailure
       containers:
-        - name: {{ $fullName }}
-          {{ include "passbolt-library.container-repositories.tpl" (dict "Values" . "Image" .Values.app.image) | nindent 10 }}
+        - name: create-gpg-keys
+          image: {{ include "passbolt.image" (dict "imageRoot" .Values.app.image "global" .Values.global) }}
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
           command:
             - "/bin/bash"
           args:
@@ -65,11 +67,12 @@ spec:
               PUBLIC_SERVERKEY="$(gpg --homedir $GNUPGHOME --armor --export $key_email | base64 -w0)"
 
               cd /tmp
-              kubectlDownload=${KUBECTL_DOWNLOAD_CMD:-'curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"'}
+              cpuArch=${CPU_ARCH:-$(eval "case `uname -m` in 'x86_64') echo 'amd64';;'aarch64') echo 'arm64';;esac")}
+              kubectlDownload=${KUBECTL_DOWNLOAD_CMD:-'curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${cpuArch}/kubectl"'}
               eval $kubectlDownload
               chmod +x kubectl
-              ./kubectl patch secret {{ $Name }}-sec-gpg --type='json' -p='[{"op": "replace", "path" : "/data/serverkey_private.asc", "value" : '"${PRIVATE_SERVERKEY}"'}]'
-              ./kubectl patch secret {{ $Name }}-sec-gpg --type='json' -p='[{"op": "replace", "path" : "/data/serverkey.asc", "value" : '"${PUBLIC_SERVERKEY}"'}]'
+              ./kubectl patch secret {{ include "passbolt.gpg.secretName" ( dict "name" $Name "Values" $.Values ) }} --type='json' -p='[{"op": "replace", "path" : "/data/serverkey_private.asc", "value" : '"${PRIVATE_SERVERKEY}"'}]'
+              ./kubectl patch secret {{ include "passbolt.gpg.secretName" ( dict "name" $Name "Values" $.Values ) }} --type='json' -p='[{"op": "replace", "path" : "/data/serverkey.asc", "value" : '"${PUBLIC_SERVERKEY}"'}]'
               touch /tmp/pod/success
               echo "Success"
           env:
@@ -80,16 +83,16 @@ spec:
             {{- end }}
           envFrom:
             - configMapRef:
-                name: {{ $Name }}-cm-env
+                name: {{ default (printf "%s-cm-env" $Name) .Values.passboltEnv.configMapName }}
             - secretRef:
-                name: {{ $Name }}-sec-env
+                name: {{ default (printf "%s-sec-env" $Name) .Values.passboltEnv.secretName }}
             {{- with .Values.passboltEnv.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
-            - name: {{ $fullName }}-vol-success
+            - name: vol-success
               mountPath: /tmp/pod
       volumes:
-        - name: {{ $fullName }}-vol-success
+        - name: vol-success
           emptyDir: {}
 {{- end }}
